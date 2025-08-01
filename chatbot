@@ -52,13 +52,15 @@ def handle_user_input(user_message, user_stage):
 
     elif user_stage == "symptom":
         if user_message in ["no", "none", "nothing"]:
-            return "Thanks for sharing your symptoms. We'll now analyze your condition.", "diagnosis"
+            return "Thanks for sharing your symptoms. We'll now analyze your condition. Type 'OK' to proceed.", "diagnosis"
+
         elif is_valid_symptom(user_message):
             session["symptoms"].append(user_message)
             return "Thanks! Would you like to specify any other symptom?", "symptom"
+        
         else:
             return "Please enter a valid symptom or type 'no' if you are done.", "symptom"
-
+    
     else:
         return "Sorry, I didn't understand that. Please try again.", user_stage
 
@@ -69,8 +71,8 @@ def write_json(new_data, filename='DATA.json'):
         file.seek(0)
         json.dump(file_data, file, indent=4)
 
-df_tr = pd.read_csv(r'C:\udiGupta\MediBot-Healthcare-chatbot\Training.csv')
-df_tt = pd.read_csv(r'C:\udiGupta\MediBot-Healthcare-chatbot\Testing.csv')
+df_tr = pd.read_csv('Training.csv')
+df_tt = pd.read_csv('Testing.csv')
 
 symp = []
 disease = []
@@ -235,20 +237,39 @@ def contains(small, big):
     return a
 
 
-def possible_diseases(l):
-    poss_dis = []
-    for dis in set(disease):
-        if contains(l, symVONdisease(df_tr, dis)):
-            poss_dis.append(dis)
-    return poss_dis
+def handle_user_input(user_message, user_stage):
+    user_message = user_message.strip().lower()
 
+    if user_stage == "age":
+        if is_valid_age(user_message):
+            session["age"] = int(user_message)
+            return "Got it! Please specify your gender (male/female).", "gender"
+        else:
+            return "Please enter a valid age (only numbers allowed).", "age"
 
-def symVONdisease(df, disease):
-    ddf = df[df.prognosis == disease]
-    m2 = (ddf == 1).any()
-    return m2.index[m2].tolist()
+    elif user_stage == "gender":
+        if is_valid_gender(user_message):
+            session["gender"] = user_message
+            session["symptoms"] = []  # Initialize symptom list
+            return "Thanks! Now, please tell me your main symptom.", "symptom"
+        else:
+            return "Please enter either 'male' or 'female' only.", "gender"
 
-knn_clf = joblib.load(r'C:\udiGupta\MediBot-Healthcare-chatbot\knn.pkl')
+    elif user_stage == "symptom":
+        if user_message in ["no", "none", "nothing"]:
+            return "Thanks for sharing your symptoms. We'll now analyze your condition. Type 'OK' to proceed.", "diagnosis"
+
+        elif is_valid_symptom(user_message):
+            session["symptoms"].append(user_message)
+            return "Thanks! Would you like to specify any other symptom?", "symptom"
+        
+        else:
+            return "Please enter a valid symptom or type 'no' if you are done.", "symptom"
+    
+    else:
+        return "Sorry, I didn't understand that. Please try again.", user_stage
+
+knn_clf = joblib.load('knn.pkl')
 
 severityDictionary = dict()
 description_list = dict()
@@ -257,7 +278,7 @@ precautionDictionary = dict()
 
 def getDescription():
     global description_list
-    with open(r'C:\udiGupta\MediBot-Healthcare-chatbot\symptom_Description.csv') as csv_file:
+    with open('symptom_Description.csv') as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
         for row in csv_reader:
@@ -267,7 +288,7 @@ def getDescription():
 
 def getSeverityDict():
     global severityDictionary
-    with open(r'C:\udiGupta\MediBot-Healthcare-chatbot\symptom_severity.csv') as csv_file:
+    with open('symptom_severity.csv') as csv_file:
 
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
@@ -281,7 +302,7 @@ def getSeverityDict():
 
 def getprecautionDict():
     global precautionDictionary
-    with open(r'C:\udiGupta\MediBot-Healthcare-chatbot\symptom_precaution.csv') as csv_file:
+    with open('symptom_precaution.csv') as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
         for row in csv_reader:
@@ -338,6 +359,22 @@ def get_bot_response():
         session["step"] = "age"  
 
     current_stage = session["step"]
+    if current_stage == "diagnosis":
+        if len(session.get("symptoms", [])) >= 2:
+            session["FSY"] = [session["symptoms"][0], 1, session["symptoms"][0]]
+            session["SSY"] = [session["symptoms"][1], 1, session["symptoms"][1]]
+            session["step"] = "PD"
+
+            import time
+            time.sleep(1)
+
+            # ✅ correct this line:
+            bot_reply, next_stage = handle_user_input("", "PD")
+
+            session["step"] = next_stage
+            return jsonify({"response": "Analyzing your symptoms... please wait...\n\n" + bot_reply})
+        else:
+            return jsonify({"response": "We need at least two symptoms to continue. Please enter one more symptom."})
 
     bot_reply, next_stage = handle_user_input(s, current_stage)
 
@@ -615,7 +652,7 @@ def get_bot_response():
             session["dis"] = diseases[0]
             session['step'] = "DIS"
             session["symv"] = symVONdisease(df_tr, session["dis"])
-            return get_bot_response()  
+            return get_bot_response() 
     if session['step'] == "PREDICT":
         result = knn_clf.predict(OHV(session["all"], all_symp_col))
         session['step'] = "END"
