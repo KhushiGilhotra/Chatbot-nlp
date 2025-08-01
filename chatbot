@@ -10,6 +10,10 @@ import joblib
 from flask import Flask, render_template, request, session
 from flask import request,jsonify
 from flask import session
+import json
+
+with open('intents_short.json') as file:
+    intents = json.load(file)
 
 app = Flask(__name__)
 
@@ -31,6 +35,13 @@ def is_valid_gender(gender_input):
 
 def is_valid_symptom(symptom_input):
     return len(symptom_input.strip()) > 0  
+
+def classify_intent(user_input):
+    for intent in intents["intents"]:
+        for pattern in intent["patterns"]:
+            if pattern.lower() in user_input.lower():
+                return intent["intent"]
+    return "unknown"
 
 def handle_user_input(user_message, user_stage):
     user_message = user_message.strip().lower()
@@ -346,15 +357,25 @@ def home():
 def get_bot_response():
     if request.method == 'POST':
         if request.is_json:
-            data=request.get_json()
+            data = request.get_json()
             s = data.get('msg', '').strip()
         else:
             s = request.form.get('msg','').strip()
     else:
-        s=request.args.get('msg')
+        s = request.args.get('msg')
 
     if not s:
         return jsonify({"response": "No message received."})
+
+    # ✅ Now this is at correct indentation level
+    intent_name = classify_intent(s)
+    for intent in intents["intents"]:
+        if intent["tag"] == intent_name:
+            if "responses" in intent:
+                response = random.choice(intent["responses"])
+                return jsonify({"response": response})
+
+    # ✅ The rest of your logic continues...
     if "step" not in session:
         session["step"] = "age"  
 
@@ -368,7 +389,6 @@ def get_bot_response():
             import time
             time.sleep(1)
 
-            # ✅ correct this line:
             bot_reply, next_stage = handle_user_input("", "PD")
 
             session["step"] = next_stage
@@ -377,10 +397,10 @@ def get_bot_response():
             return jsonify({"response": "We need at least two symptoms to continue. Please enter one more symptom."})
 
     bot_reply, next_stage = handle_user_input(s, current_stage)
-
     session["step"] = next_stage
 
     return jsonify({"response": bot_reply})
+
 
     if "step" in session:
         if session["step"] == "Q_C":
